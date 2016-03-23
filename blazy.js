@@ -55,6 +55,8 @@
         scope.options.breakpoints = scope.options.breakpoints || false;
         scope.options.loadInvisible = scope.options.loadInvisible || false;
         scope.options.successClass = scope.options.successClass || 'b-loaded';
+        scope.options.reflowBreakpoints = scope.options.reflowBreakpoints || true;
+        scope.options.reflowBreakpointClass = scope.options.breakpointClass || 'b-reflowbreakpoints';
         scope.options.validateDelay = scope.options.validateDelay || 25;
         scope.options.saveViewportOffsetDelay = scope.options.saveViewportOffsetDelay || 50;
         scope.options.src = source = scope.options.src || 'data-src';
@@ -136,7 +138,15 @@
                 bindEvent(window, 'resize', util.saveViewportOffsetT);
                 bindEvent(window, 'resize', util.validateT);
                 bindEvent(window, 'scroll', util.validateT);
+
+                bindEvent(window, 'resize', reFlowElement(el, self.options));
             }
+            if (self.options.reflowBreakpoints) {
+                each(util.elements, function (el) {
+                    addClass(el, self.options.reflowBreakpointClass);
+                });
+            }
+
             // And finally, we start to lazy load.
             validate(self);
         }, 1); // "dom ready" fix
@@ -199,14 +209,58 @@
         }
     }
 
+    function reFlowElement(ele, options) {
+        var source;
+        if (hasClass(ele, options.reflowBreakpointClass)) {
+            // iterate over breakpoints set in config
+            each(options.breakpoints, function (object) {
+                if (object.width >= document.documentElement.clientWidth) {
+                    // we have found our source
+                    source = object.src;
+                    loadResponsiveElement(ele, source);
+                    return false;
+                }
+            });
+        }
+    }
+
+    function loadResponsiveElement(ele, options, src) {
+        if (src) {
+            var isImage = ele.nodeName.toLowerCase() === 'img';
+            // Image or background image
+            if (isImage || ele.src === undefined) {
+                var img = new Image();
+                img.onerror = function() {
+                    if (options.error) options.error(ele, "invalid");
+                    addClass(ele, options.errorClass);
+                };
+                img.onload = function() {
+                    // Is element an image or should we add the src as a background image?
+                    isImage ? ele.src = src : ele.style.backgroundImage = 'url("' + src + '")';
+                    itemLoaded(ele, options);
+                };
+                img.src = src; //preload
+                // An item with src like iframe, unity, video etc
+            } else {
+                ele.src = src;
+                itemLoaded(ele, options);
+            }
+        } else {
+            if (options.error) options.error(ele, "missing");
+            if (!hasClass(ele, options.errorClass)) addClass(ele, options.errorClass);
+        }
+    }
+
     function itemLoaded(ele, options) {
         addClass(ele, options.successClass);
         if (options.success) options.success(ele);
-        // cleanup markup, remove data source attributes
-        each(options.breakpoints, function(object) {
-            ele.removeAttribute(object.src);
-        });
-        ele.removeAttribute(options.src);
+        // cleanup markup, remove data source attributes only if we are not reflowing breakpoints
+        if (!options.reflowBreakpoints) {
+            each(options.breakpoints, function (object) {
+                ele.removeAttribute(object.src);
+            });
+            ele.removeAttribute(options.src);
+        }
     }
 
     function hasClass(ele, className) {
